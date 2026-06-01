@@ -18,6 +18,13 @@ body,
 
 .pin-content {
   will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: layout style paint;
+}
+
+.pin-card {
+  transform: translateZ(0);
 }
 
 .pin-toolbar {

@@ -10,8 +10,14 @@ const MIN_SCALE = 0.3;
 const MAX_SCALE = 3.0;
 const MIN_OPACITY = 0.2;
 const MAX_OPACITY = 1.0;
-/** 滚轮停止后延迟多久再同步 Tauri 物理窗口尺寸 */
-const SYNC_DEBOUNCE_MS = 300;
+/** 滚轮停止后最终对齐窗口尺寸 */
+const SYNC_DEBOUNCE_MS = 120;
+/** 缩放过程中渐进提交物理尺寸，避免 transform 累积过大导致裁切与结束跳变 */
+const INCREMENTAL_SYNC_MS = 80;
+/** 累积预览缩放超过此阈值时触发渐进提交 */
+const INCREMENTAL_SCALE_THRESHOLD = 0.12;
+/** 指数缩放灵敏度（合并同一帧内多次滚轮 delta） */
+const ZOOM_SENSITIVITY = 0.0012;
 /** 拖动触发阈值（像素），避免单击误触 */
 const DRAG_THRESHOLD_PX = 4;
 /** 双击判定窗口（毫秒），此时间内不启动拖动 */
@@ -22,15 +28,18 @@ export default function PinWindow() {
   const detection = useMemo(() => detectCode(content), [content]);
 
   const [opacity, setOpacity] = useState(1);
-  const [baseSize, setBaseSize] = useState({ width: 480, height: 360 });
   const [copyHint, setCopyHint] = useState<string | null>(null);
 
+  const rootRef = useRef<HTMLDivElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const incrementalSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewScaleRef = useRef(1);
-  const baseSizeRef = useRef(baseSize);
+  const baseSizeRef = useRef({ width: 480, height: 360 });
   const contentRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
+  const zoomRafRef = useRef<number | null>(null);
+  const pendingZoomDeltaRef = useRef(0);
   const dragStartedRef = useRef(false);
   const dragPendingRef = useRef<{
     x: number;
@@ -38,27 +47,23 @@ export default function PinWindow() {
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
 
-  useEffect(() => {
-    baseSizeRef.current = baseSize;
-  }, [baseSize]);
+  const clampScale = useCallback((scale: number) => {
+    return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+  }, []);
 
   const applyPreviewScale = useCallback((scale: number) => {
     previewScaleRef.current = scale;
-    if (contentRef.current) {
-      contentRef.current.style.transform = `scale(${scale})`;
+    const el = contentRef.current;
+    if (el) {
+      el.style.transform = `scale3d(${scale}, ${scale}, 1)`;
     }
   }, []);
 
-  const highlightedHtml = useMemo(() => {
-    if (!detection.isCode) return null;
-    return highlightCode(content, detection.language);
-  }, [content, detection]);
-
-  const syncWindowSize = useCallback(async () => {
+  const commitPreviewScale = useCallback(async () => {
     if (isSyncingRef.current) return;
 
     const scale = previewScaleRef.current;
-    if (Math.abs(scale - 1) < 0.001) return;
+    if (Math.abs(scale - 1) < 0.02) return;
 
     const { width, height } = baseSizeRef.current;
     const nextWidth = Math.round(width * scale);
@@ -66,13 +71,9 @@ export default function PinWindow() {
 
     isSyncingRef.current = true;
     try {
-      const win = getCurrentWindow();
-      await win.setSize(new LogicalSize(nextWidth, nextHeight));
-
-      const nextBaseSize = { width: nextWidth, height: nextHeight };
-      baseSizeRef.current = nextBaseSize;
-      setBaseSize(nextBaseSize);
-      applyPreviewScale(1);
+      await getCurrentWindow().setSize(new LogicalSize(nextWidth, nextHeight));
+      baseSizeRef.current = { width: nextWidth, height: nextHeight };
+      requestAnimationFrame(() => applyPreviewScale(1));
     } catch (err) {
       console.error("PinCopy: failed to sync window size", err);
     } finally {
@@ -80,41 +81,75 @@ export default function PinWindow() {
     }
   }, [applyPreviewScale]);
 
-  const scheduleSizeSync = useCallback(() => {
+  const scheduleFinalSync = useCallback(() => {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      void syncWindowSize();
+      void commitPreviewScale();
     }, SYNC_DEBOUNCE_MS);
-  }, [syncWindowSize]);
+  }, [commitPreviewScale]);
 
-  const handleWheel = useCallback(
-    (event: React.WheelEvent) => {
+  const scheduleIncrementalSync = useCallback(() => {
+    if (incrementalSyncTimerRef.current) return;
+    incrementalSyncTimerRef.current = setTimeout(() => {
+      incrementalSyncTimerRef.current = null;
+      if (Math.abs(previewScaleRef.current - 1) >= INCREMENTAL_SCALE_THRESHOLD) {
+        void commitPreviewScale();
+      }
+    }, INCREMENTAL_SYNC_MS);
+  }, [commitPreviewScale]);
+
+  const flushZoomFrame = useCallback(() => {
+    zoomRafRef.current = null;
+
+    const delta = pendingZoomDeltaRef.current;
+    pendingZoomDeltaRef.current = 0;
+    if (Math.abs(delta) < 0.01) return;
+
+    const factor = Math.exp(-delta * ZOOM_SENSITIVITY);
+    const next = clampScale(previewScaleRef.current * factor);
+    applyPreviewScale(next);
+    scheduleIncrementalSync();
+    scheduleFinalSync();
+  }, [applyPreviewScale, clampScale, scheduleFinalSync, scheduleIncrementalSync]);
+
+  const queueZoomDelta = useCallback(
+    (deltaY: number) => {
+      pendingZoomDeltaRef.current += deltaY;
+      if (zoomRafRef.current === null) {
+        zoomRafRef.current = requestAnimationFrame(flushZoomFrame);
+      }
+    },
+    [flushZoomFrame],
+  );
+
+  const highlightedHtml = useMemo(() => {
+    if (!detection.isCode) return null;
+    return highlightCode(content, detection.language);
+  }, [content, detection]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const onWheel = (event: WheelEvent) => {
       if (event.altKey || event.ctrlKey) {
         event.preventDefault();
         const delta = event.deltaY > 0 ? -0.05 : 0.05;
-        setOpacity((prev) => {
-          const next = Math.min(
-            MAX_OPACITY,
-            Math.max(MIN_OPACITY, prev + delta),
-          );
-          return next;
-        });
+        setOpacity((prev) =>
+          Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, prev + delta)),
+        );
         return;
       }
 
       if (event.shiftKey) {
         event.preventDefault();
-        const factor = event.deltaY > 0 ? 0.92 : 1.08;
-        const next = Math.min(
-          MAX_SCALE,
-          Math.max(MIN_SCALE, previewScaleRef.current * factor),
-        );
-        applyPreviewScale(next);
-        scheduleSizeSync();
+        queueZoomDelta(event.deltaY);
       }
-    },
-    [scheduleSizeSync, applyPreviewScale],
-  );
+    };
+
+    root.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => root.removeEventListener("wheel", onWheel, { capture: true });
+  }, [queueZoomDelta]);
 
   const handleClose = useCallback(async () => {
     try {
@@ -243,7 +278,11 @@ export default function PinWindow() {
   useEffect(() => {
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      if (incrementalSyncTimerRef.current) {
+        clearTimeout(incrementalSyncTimerRef.current);
+      }
       if (copyHintTimerRef.current) clearTimeout(copyHintTimerRef.current);
+      if (zoomRafRef.current !== null) cancelAnimationFrame(zoomRafRef.current);
     };
   }, []);
 
@@ -257,14 +296,13 @@ export default function PinWindow() {
 
   return (
     <div
+      ref={rootRef}
       className="pin-window-root h-full w-full overflow-hidden bg-transparent"
-      onWheelCapture={handleWheel}
       style={{ opacity }}
     >
       <div
         ref={contentRef}
         className="pin-content h-full w-full origin-top-left"
-        style={{ transform: "scale(1)" }}
       >
         <div
           className={`pin-card flex h-full w-full flex-col overflow-hidden rounded-lg border shadow-2xl ${cardClassName}`}
