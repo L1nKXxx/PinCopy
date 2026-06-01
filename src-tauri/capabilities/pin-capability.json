@@ -1,0 +1,14 @@
+{
+  "identifier": "pin-window-capability",
+  "description": "Permissions for dynamically created pin windows",
+  "windows": ["pin_*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-size",
+    "core:window:allow-inner-size",
+    "core:window:allow-scale-factor",
+    "clipboard-manager:allow-write-text"
+  ]
+}
