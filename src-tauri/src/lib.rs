@@ -1,4 +1,7 @@
-//! PinCopy 核心后端：全局快捷键、剪贴板读取、动态贴图窗口创建
+//! PinCopy 核心后端：全局热键、剪贴板读取、动态贴图窗口创建
+
+#[cfg(desktop)]
+mod hotkey;
 
 use mouse_position::mouse_position::Mouse;
 use tauri::{
@@ -19,7 +22,7 @@ const MENU_AUTOSTART_ID: &str = "autostart";
 const MENU_QUIT_ID: &str = "quit";
 
 /// 写入日志到 %APPDATA%/com.pincopy.desktop/pincopy.log（release 无控制台时便于排查）
-fn log_line(app: &AppHandle, message: &str) {
+pub(crate) fn log_line(app: &AppHandle, message: &str) {
     let Ok(dir) = app.path().app_data_dir() else {
         return;
     };
@@ -92,7 +95,7 @@ fn create_pin_window(app: &tauri::AppHandle, text: &str) -> Result<(), Box<dyn s
     Ok(())
 }
 
-/// Alt+V 触发：读取剪贴板文本并创建贴图
+/// 双击 Ctrl 触发：读取剪贴板文本并创建贴图
 fn handle_pin_shortcut(app: &tauri::AppHandle) {
     log_line(app, "pin shortcut triggered");
 
@@ -113,8 +116,8 @@ fn handle_pin_shortcut(app: &tauri::AppHandle) {
     }
 }
 
-/// 全局快捷键回调可能在非主线程触发，窗口创建必须切回主线程
-fn dispatch_pin_shortcut(app: &tauri::AppHandle) {
+/// 热键回调可能在非主线程触发，窗口创建必须切回主线程
+pub(crate) fn dispatch_pin_shortcut(app: &tauri::AppHandle) {
     let app = app.clone();
     let app_for_handler = app.clone();
     if let Err(err) = app.run_on_main_thread(move || {
@@ -169,7 +172,7 @@ fn ensure_single_instance() -> bool {
 fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
 
-    let pin_item = MenuItem::with_id(app, MENU_PIN_ID, "立即贴图 (Alt+V)", true, None::<&str>)?;
+    let pin_item = MenuItem::with_id(app, MENU_PIN_ID, "立即贴图 (双击 Ctrl)", true, None::<&str>)?;
     let autostart_item = CheckMenuItem::with_id(
         app,
         MENU_AUTOSTART_ID,
@@ -191,7 +194,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("PinCopy · Alt+V 贴图")
+        .tooltip("PinCopy · 双击 Ctrl 贴图")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -255,31 +258,7 @@ pub fn run() {
                 }
 
                 setup_tray(&handle)?;
-
-                use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
-
-                let register_result = app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_shortcuts(["Alt+V"])?
-                        .with_handler(|app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed
-                                && shortcut.matches(Modifiers::ALT, Code::KeyV)
-                            {
-                                dispatch_pin_shortcut(app);
-                            }
-                        })
-                        .build(),
-                );
-
-                match register_result {
-                    Ok(_) => log_line(&handle, "Alt+V registered"),
-                    Err(err) => log_line(
-                        &handle,
-                        &format!(
-                            "Alt+V registration failed: {err} (another instance may own the hotkey)"
-                        ),
-                    ),
-                }
+                hotkey::start_double_ctrl_listener(handle);
             }
 
             Ok(())

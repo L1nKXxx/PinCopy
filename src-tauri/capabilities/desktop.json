@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "desktop-capability",
-  "description": "Desktop-only permissions for global shortcut and dynamic window creation",
+  "description": "Desktop-only permissions for hotkey listener and dynamic window creation",
   "platforms": [
     "macOS",
     "windows",
@@ -11,9 +11,6 @@
     "main"
   ],
   "permissions": [
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-is-registered",
-    "global-shortcut:allow-unregister",
     "clipboard-manager:allow-read-text",
     "core:window:allow-create",
     "core:webview:allow-create-webview-window",
