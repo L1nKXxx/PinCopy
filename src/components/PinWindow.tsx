@@ -19,6 +19,9 @@ const INCREMENTAL_SYNC_MS = 80;
 const INCREMENTAL_SCALE_THRESHOLD = 0.12;
 /** 指数缩放灵敏度（合并同一帧内多次滚轮 delta） */
 const ZOOM_SENSITIVITY = 0.0012;
+/** 按住并移动超过此距离才启动窗口拖动，避免单击触发 startDragging 后丢失 mouseup 导致「粘滞」跟随 */
+const DRAG_THRESHOLD_PX = 5;
+
 function initialDisplayContent(): string {
   const raw = decodePinContent();
   return tryFormatJson(raw) ?? raw;
@@ -169,14 +172,50 @@ export default function PinWindow() {
     }
   }, [displayContent, showCopyHint]);
 
-  const handleDragMouseDown = useCallback((event: React.MouseEvent) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void getCurrentWindow().startDragging().catch((err) => {
-      console.error("PinCopy: startDragging failed", err);
-    });
-  }, []);
+  const handleDragPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+
+      const handle = event.currentTarget;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let dragStarted = false;
+
+      const cleanup = () => {
+        handle.removeEventListener("pointermove", onPointerMove);
+        handle.removeEventListener("pointerup", onPointerUp);
+        handle.removeEventListener("pointercancel", onPointerUp);
+        if (handle.hasPointerCapture(event.pointerId)) {
+          handle.releasePointerCapture(event.pointerId);
+        }
+      };
+
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        if (dragStarted || (moveEvent.buttons & 1) === 0) return;
+
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+
+        dragStarted = true;
+        void getCurrentWindow().startDragging().catch((err) => {
+          dragStarted = false;
+          console.error("PinCopy: startDragging failed", err);
+        });
+      };
+
+      const onPointerUp = () => {
+        cleanup();
+      };
+
+      handle.setPointerCapture(event.pointerId);
+      handle.addEventListener("pointermove", onPointerMove);
+      handle.addEventListener("pointerup", onPointerUp);
+      handle.addEventListener("pointercancel", onPointerUp);
+    },
+    [],
+  );
 
   const cardClassName = detection.isCode
     ? "border-slate-700/60 bg-[#1d1f21]"
@@ -233,7 +272,7 @@ export default function PinWindow() {
           <div className="pin-toolbar shrink-0">
             <div
               className="pin-drag-handle"
-              onMouseDown={handleDragMouseDown}
+              onPointerDown={handleDragPointerDown}
               aria-label="拖动窗口"
             />
             <button
