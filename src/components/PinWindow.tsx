@@ -4,6 +4,7 @@ import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import "prismjs/themes/prism-tomorrow.css";
 import { detectCode } from "../utils/codeDetect";
 import { highlightCode, prismLanguageClass } from "../utils/highlight";
+import { tryFormatJson } from "../utils/formatJson";
 import { decodePinContent } from "../utils/pinContent";
 
 const MIN_SCALE = 0.3;
@@ -24,8 +25,8 @@ const DRAG_THRESHOLD_PX = 4;
 const DOUBLE_CLICK_MS = 200;
 
 export default function PinWindow() {
-  const content = useMemo(() => decodePinContent(), []);
-  const detection = useMemo(() => detectCode(content), [content]);
+  const [displayContent, setDisplayContent] = useState(() => decodePinContent());
+  const detection = useMemo(() => detectCode(displayContent), [displayContent]);
 
   const [opacity, setOpacity] = useState(1);
   const [copyHint, setCopyHint] = useState<string | null>(null);
@@ -124,8 +125,8 @@ export default function PinWindow() {
 
   const highlightedHtml = useMemo(() => {
     if (!detection.isCode) return null;
-    return highlightCode(content, detection.language);
-  }, [content, detection]);
+    return highlightCode(displayContent, detection.language);
+  }, [displayContent, detection]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -167,13 +168,23 @@ export default function PinWindow() {
 
   const handleCopyAll = useCallback(async () => {
     try {
-      await writeText(content);
+      await writeText(displayContent);
       showCopyHint("已复制");
     } catch (err) {
       console.error("PinCopy: copy failed", err);
       showCopyHint("复制失败");
     }
-  }, [content, showCopyHint]);
+  }, [displayContent, showCopyHint]);
+
+  const handleFormatJson = useCallback(() => {
+    const formatted = tryFormatJson(displayContent);
+    if (formatted === null) {
+      showCopyHint("非有效 JSON");
+      return;
+    }
+    setDisplayContent(formatted);
+    showCopyHint("已格式化");
+  }, [displayContent, showCopyHint]);
 
   const cancelPendingDrag = useCallback(() => {
     const pending = dragPendingRef.current;
@@ -254,11 +265,17 @@ export default function PinWindow() {
       if (event.key === "c" && event.ctrlKey && event.shiftKey) {
         event.preventDefault();
         void handleCopyAll();
+        return;
+      }
+
+      if (event.key === "j" && event.ctrlKey && event.shiftKey) {
+        event.preventDefault();
+        handleFormatJson();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleClose, handleCopyAll]);
+  }, [handleClose, handleCopyAll, handleFormatJson]);
 
   useEffect(() => {
     return () => {
@@ -271,7 +288,7 @@ export default function PinWindow() {
     };
   }, []);
 
-  if (!content) {
+  if (!displayContent) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-transparent p-4 text-sm text-slate-400">
         无内容
@@ -321,12 +338,12 @@ export default function PinWindow() {
             >
               <code
                 className={prismLanguageClass(detection.language)}
-                dangerouslySetInnerHTML={{ __html: highlightedHtml ?? content }}
+                dangerouslySetInnerHTML={{ __html: highlightedHtml ?? displayContent }}
               />
             </pre>
           ) : (
             <div className="pin-text-block min-h-0 flex-1 overflow-auto select-text p-5 pt-3 text-[15px] leading-7 text-slate-100">
-              <p className="m-0 whitespace-pre-wrap break-words">{content}</p>
+              <p className="m-0 whitespace-pre-wrap break-words">{displayContent}</p>
             </div>
           )}
         </div>
