@@ -24,8 +24,13 @@ const DRAG_THRESHOLD_PX = 4;
 /** 双击判定窗口（毫秒），此时间内不启动拖动 */
 const DOUBLE_CLICK_MS = 200;
 
+function initialDisplayContent(): string {
+  const raw = decodePinContent();
+  return tryFormatJson(raw) ?? raw;
+}
+
 export default function PinWindow() {
-  const [displayContent, setDisplayContent] = useState(() => decodePinContent());
+  const [displayContent] = useState(initialDisplayContent);
   const detection = useMemo(() => detectCode(displayContent), [displayContent]);
 
   const [opacity, setOpacity] = useState(1);
@@ -176,16 +181,6 @@ export default function PinWindow() {
     }
   }, [displayContent, showCopyHint]);
 
-  const handleFormatJson = useCallback(() => {
-    const formatted = tryFormatJson(displayContent);
-    if (formatted === null) {
-      showCopyHint("非有效 JSON");
-      return;
-    }
-    setDisplayContent(formatted);
-    showCopyHint("已格式化");
-  }, [displayContent, showCopyHint]);
-
   const cancelPendingDrag = useCallback(() => {
     const pending = dragPendingRef.current;
     if (pending?.timer) clearTimeout(pending.timer);
@@ -265,17 +260,11 @@ export default function PinWindow() {
       if (event.key === "c" && event.ctrlKey && event.shiftKey) {
         event.preventDefault();
         void handleCopyAll();
-        return;
-      }
-
-      if (event.key === "j" && event.ctrlKey && event.shiftKey) {
-        event.preventDefault();
-        handleFormatJson();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleClose, handleCopyAll, handleFormatJson]);
+  }, [handleClose, handleCopyAll]);
 
   useEffect(() => {
     return () => {
