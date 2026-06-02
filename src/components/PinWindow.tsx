@@ -19,11 +19,6 @@ const INCREMENTAL_SYNC_MS = 80;
 const INCREMENTAL_SCALE_THRESHOLD = 0.12;
 /** 指数缩放灵敏度（合并同一帧内多次滚轮 delta） */
 const ZOOM_SENSITIVITY = 0.0012;
-/** 拖动触发阈值（像素），避免单击误触 */
-const DRAG_THRESHOLD_PX = 4;
-/** 双击判定窗口（毫秒），此时间内不启动拖动 */
-const DOUBLE_CLICK_MS = 200;
-
 function initialDisplayContent(): string {
   const raw = decodePinContent();
   return tryFormatJson(raw) ?? raw;
@@ -46,13 +41,6 @@ export default function PinWindow() {
   const isSyncingRef = useRef(false);
   const zoomRafRef = useRef<number | null>(null);
   const pendingZoomDeltaRef = useRef(0);
-  const dragStartedRef = useRef(false);
-  const dragPendingRef = useRef<{
-    x: number;
-    y: number;
-    timer: ReturnType<typeof setTimeout> | null;
-  } | null>(null);
-
   const clampScale = useCallback((scale: number) => {
     return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
   }, []);
@@ -181,74 +169,18 @@ export default function PinWindow() {
     }
   }, [displayContent, showCopyHint]);
 
-  const cancelPendingDrag = useCallback(() => {
-    const pending = dragPendingRef.current;
-    if (pending?.timer) clearTimeout(pending.timer);
-    dragPendingRef.current = null;
-  }, []);
-
-  const startWindowDrag = useCallback(() => {
-    if (dragStartedRef.current) return;
-    dragStartedRef.current = true;
-    cancelPendingDrag();
+  const handleDragMouseDown = useCallback((event: React.MouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
     void getCurrentWindow().startDragging().catch((err) => {
-      dragStartedRef.current = false;
       console.error("PinCopy: startDragging failed", err);
     });
-  }, [cancelPendingDrag]);
-
-  const handleDragMouseDown = useCallback(
-    (event: React.MouseEvent) => {
-      if (event.button !== 0) return;
-      event.stopPropagation();
-
-      cancelPendingDrag();
-      const timer = setTimeout(() => {
-        if (dragPendingRef.current) {
-          dragPendingRef.current.timer = null;
-          startWindowDrag();
-        }
-      }, DOUBLE_CLICK_MS);
-
-      dragPendingRef.current = {
-        x: event.clientX,
-        y: event.clientY,
-        timer,
-      };
-    },
-    [cancelPendingDrag, startWindowDrag],
-  );
+  }, []);
 
   const cardClassName = detection.isCode
     ? "border-slate-700/60 bg-[#1d1f21]"
     : "border-slate-600/40 bg-slate-900/90 backdrop-blur-sm";
-
-  useEffect(() => {
-    const onMouseMove = (event: MouseEvent) => {
-      const pending = dragPendingRef.current;
-      if (!pending?.timer) return;
-
-      const dx = event.clientX - pending.x;
-      const dy = event.clientY - pending.y;
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
-
-      startWindowDrag();
-    };
-
-    const onMouseUp = () => {
-      cancelPendingDrag();
-      dragStartedRef.current = false;
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-      cancelPendingDrag();
-      dragStartedRef.current = false;
-    };
-  }, [startWindowDrag, cancelPendingDrag]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
