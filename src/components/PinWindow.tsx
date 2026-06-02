@@ -132,7 +132,7 @@ export default function PinWindow() {
     if (!root) return;
 
     const onWheel = (event: WheelEvent) => {
-      if (event.altKey || event.ctrlKey) {
+      if (event.altKey) {
         event.preventDefault();
         const delta = event.deltaY > 0 ? -0.05 : 0.05;
         setOpacity((prev) =>
