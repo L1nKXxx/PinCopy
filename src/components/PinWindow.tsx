@@ -191,25 +191,10 @@ export default function PinWindow() {
     });
   }, [cancelPendingDrag]);
 
-  const handleCardMouseDown = useCallback(
-    (event: React.MouseEvent) => {
-      if (event.button !== 0 || event.detail < 2) return;
-      cancelPendingDrag();
-      void handleClose();
-    },
-    [handleClose, cancelPendingDrag],
-  );
-
   const handleDragMouseDown = useCallback(
     (event: React.MouseEvent) => {
       if (event.button !== 0) return;
       event.stopPropagation();
-
-      if (event.detail >= 2) {
-        cancelPendingDrag();
-        void handleClose();
-        return;
-      }
 
       cancelPendingDrag();
       const timer = setTimeout(() => {
@@ -225,7 +210,7 @@ export default function PinWindow() {
         timer,
       };
     },
-    [handleClose, cancelPendingDrag, startWindowDrag],
+    [cancelPendingDrag, startWindowDrag],
   );
 
   const cardClassName = detection.isCode
@@ -306,7 +291,6 @@ export default function PinWindow() {
       >
         <div
           className={`pin-card flex h-full w-full flex-col overflow-hidden rounded-lg border shadow-2xl ${cardClassName}`}
-          onMouseDown={handleCardMouseDown}
         >
           <div className="pin-toolbar shrink-0">
             <div
