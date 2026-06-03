@@ -1,5 +1,61 @@
 @import "tailwindcss";
 
+/* ── 主题变量：浅色 / 深色 ── */
+:root,
+[data-theme="light"] {
+  --pin-surface-code: #f8fafc;
+  --pin-surface-text: rgba(255, 255, 255, 0.96);
+  --pin-border: rgba(15, 23, 42, 0.1);
+  --pin-border-code: rgba(51, 65, 85, 0.18);
+  --pin-shadow: 0 12px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06);
+  --pin-toolbar-bg: linear-gradient(
+    180deg,
+    rgba(241, 245, 249, 0.95) 0%,
+    rgba(248, 250, 252, 0.88) 100%
+  );
+  --pin-toolbar-border: rgba(15, 23, 42, 0.06);
+  --pin-drag-handle: rgba(100, 116, 139, 0.45);
+  --pin-btn-fg: #475569;
+  --pin-btn-bg: rgba(15, 23, 42, 0.06);
+  --pin-btn-bg-hover: rgba(15, 23, 42, 0.1);
+  --pin-btn-fg-hover: #0f172a;
+  --pin-text-fg: #1e293b;
+  --pin-muted: #64748b;
+  --pin-hint: #16a34a;
+  --pin-scrollbar: rgba(100, 116, 139, 0.35);
+  --pin-radius: 10px;
+  --app-bg: #f1f5f9;
+  --app-fg: #334155;
+  --app-title: #0f172a;
+}
+
+[data-theme="dark"] {
+  --pin-surface-code: #1a1c1e;
+  --pin-surface-text: rgba(15, 23, 42, 0.92);
+  --pin-border: rgba(148, 163, 184, 0.14);
+  --pin-border-code: rgba(100, 116, 139, 0.28);
+  --pin-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --pin-toolbar-bg: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.55) 0%,
+    rgba(15, 23, 42, 0.35) 100%
+  );
+  --pin-toolbar-border: rgba(148, 163, 184, 0.08);
+  --pin-drag-handle: rgba(148, 163, 184, 0.38);
+  --pin-btn-fg: #cbd5e1;
+  --pin-btn-bg: rgba(148, 163, 184, 0.14);
+  --pin-btn-bg-hover: rgba(148, 163, 184, 0.26);
+  --pin-btn-fg-hover: #f8fafc;
+  --pin-text-fg: #e2e8f0;
+  --pin-muted: #94a3b8;
+  --pin-hint: #86efac;
+  --pin-scrollbar: rgba(148, 163, 184, 0.38);
+  --pin-radius: 10px;
+  --app-bg: #0f172a;
+  --app-fg: #94a3b8;
+  --app-title: #e2e8f0;
+}
+
 html,
 body,
 #root {
@@ -11,7 +67,34 @@ body,
   overflow: hidden;
 }
 
-/* 贴图窗口专用：确保 Tauri 透明窗口下背景完全透明 */
+/* 后台守护窗口（非透明贴图） */
+.app-daemon {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-bg);
+  color: var(--app-fg);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.app-daemon__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--app-title);
+  letter-spacing: 0.02em;
+}
+
+.app-daemon__hint {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+/* 贴图窗口：Tauri 透明窗口下根节点保持透明 */
 .pin-window-root {
   background: transparent !important;
 }
@@ -25,15 +108,34 @@ body,
 
 .pin-card {
   transform: translateZ(0);
+  border-radius: var(--pin-radius);
+  border: 1px solid var(--pin-border);
+  box-shadow: var(--pin-shadow);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.pin-card--code {
+  background: var(--pin-surface-code);
+  border-color: var(--pin-border-code);
+}
+
+.pin-card--text {
+  background: var(--pin-surface-text);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .pin-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 6px 0 0;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 0;
   flex-shrink: 0;
+  background: var(--pin-toolbar-bg);
+  border-bottom: 1px solid var(--pin-toolbar-border);
 }
 
 .pin-drag-handle {
@@ -52,10 +154,16 @@ body,
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 36px;
+  width: 40px;
   height: 4px;
   border-radius: 9999px;
-  background: rgba(148, 163, 184, 0.35);
+  background: var(--pin-drag-handle);
+  transition: background 0.2s ease;
+}
+
+.pin-drag-handle:hover::after {
+  opacity: 1;
+  filter: brightness(1.15);
 }
 
 .pin-drag-handle:active {
@@ -65,29 +173,33 @@ body,
 .pin-copy-btn {
   flex-shrink: 0;
   border: none;
-  border-radius: 4px;
-  padding: 2px 8px;
+  border-radius: 6px;
+  padding: 3px 10px;
   font-size: 12px;
+  font-weight: 500;
   line-height: 1.5;
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.15);
+  color: var(--pin-btn-fg);
+  background: var(--pin-btn-bg);
   cursor: pointer;
   user-select: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .pin-copy-btn:hover {
-  background: rgba(148, 163, 184, 0.28);
-  color: #f1f5f9;
+  background: var(--pin-btn-bg-hover);
+  color: var(--pin-btn-fg-hover);
 }
 
 .pin-copy-hint {
   flex-shrink: 0;
   font-size: 11px;
-  color: #86efac;
+  font-weight: 500;
+  color: var(--pin-hint);
   user-select: none;
 }
 
-/* Prism 深色主题微调 */
 .pin-code-block[class*="language-"] {
   margin: 0 !important;
   background: transparent !important;
@@ -105,10 +217,15 @@ body,
   font-family:
     "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
     "Source Han Sans SC", sans-serif;
+  color: var(--pin-text-fg);
   letter-spacing: 0.02em;
   line-height: 1.8;
   text-wrap: pretty;
   cursor: text;
+}
+
+.pin-empty {
+  color: var(--pin-muted);
 }
 
 .pin-code-block::-webkit-scrollbar,
@@ -119,6 +236,14 @@ body,
 
 .pin-code-block::-webkit-scrollbar-thumb,
 .pin-text-block::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
+  background: var(--pin-scrollbar);
   border-radius: 3px;
+}
+
+/* Prism 浅色主题在深色 data-theme 下的 token 对比度微调 */
+[data-theme="dark"] .pin-code-block .token.comment,
+[data-theme="dark"] .pin-code-block .token.prolog,
+[data-theme="dark"] .pin-code-block .token.doctype,
+[data-theme="dark"] .pin-code-block .token.cdata {
+  color: #7c8b9a;
 }

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-theme-read"
+description = "Allow reading theme preference from the frontend"
+commands.allow = ["get_theme_preference"]

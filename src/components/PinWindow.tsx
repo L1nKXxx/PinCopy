@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import "prismjs/themes/prism-tomorrow.css";
+import prismDarkUrl from "prismjs/themes/prism-tomorrow.css?url";
+import prismLightUrl from "prismjs/themes/prism.css?url";
+import { useTheme } from "../hooks/useTheme";
 import { detectCode } from "../utils/codeDetect";
 import { highlightCode, prismLanguageClass } from "../utils/highlight";
 import { tryFormatJson } from "../utils/formatJson";
 import { decodePinContent } from "../utils/pinContent";
+
+const PRISM_THEME_LINK_ID = "pincopy-prism-theme";
 
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 3.0;
@@ -28,6 +32,7 @@ function initialDisplayContent(): string {
 }
 
 export default function PinWindow() {
+  const resolvedTheme = useTheme();
   const [displayContent] = useState(initialDisplayContent);
   const detection = useMemo(() => detectCode(displayContent), [displayContent]);
 
@@ -218,8 +223,21 @@ export default function PinWindow() {
   );
 
   const cardClassName = detection.isCode
-    ? "border-slate-700/60 bg-[#1d1f21]"
-    : "border-slate-600/40 bg-slate-900/90 backdrop-blur-sm";
+    ? "pin-card--code"
+    : "pin-card--text";
+
+  useEffect(() => {
+    let link = document.getElementById(
+      PRISM_THEME_LINK_ID,
+    ) as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement("link");
+      link.id = PRISM_THEME_LINK_ID;
+      link.rel = "stylesheet";
+      document.head.appendChild(link);
+    }
+    link.href = resolvedTheme === "dark" ? prismDarkUrl : prismLightUrl;
+  }, [resolvedTheme]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -250,7 +268,7 @@ export default function PinWindow() {
 
   if (!displayContent) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-transparent p-4 text-sm text-slate-400">
+      <div className="pin-empty flex h-full w-full items-center justify-center bg-transparent p-4 text-sm">
         无内容
       </div>
     );
@@ -267,7 +285,7 @@ export default function PinWindow() {
         className="pin-content h-full w-full origin-top-left"
       >
         <div
-          className={`pin-card flex h-full w-full flex-col overflow-hidden rounded-lg border shadow-2xl ${cardClassName}`}
+          className={`pin-card flex h-full w-full flex-col overflow-hidden ${cardClassName}`}
         >
           <div className="pin-toolbar shrink-0">
             <div
@@ -302,7 +320,7 @@ export default function PinWindow() {
               />
             </pre>
           ) : (
-            <div className="pin-text-block min-h-0 flex-1 overflow-auto select-text p-5 pt-3 text-[15px] leading-7 text-slate-100">
+            <div className="pin-text-block min-h-0 flex-1 overflow-auto select-text p-5 pt-3 text-[15px] leading-7">
               <p className="m-0 whitespace-pre-wrap break-words">{displayContent}</p>
             </div>
           )}

@@ -3,12 +3,15 @@
 #[cfg(desktop)]
 mod hotkey;
 
+mod theme;
+
 use mouse_position::mouse_position::Mouse;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+use theme::{ThemePreference, load_theme_preference};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -20,6 +23,9 @@ const TRAY_ID: &str = "main-tray";
 const MENU_PIN_ID: &str = "pin_now";
 const MENU_AUTOSTART_ID: &str = "autostart";
 const MENU_QUIT_ID: &str = "quit";
+const MENU_THEME_SYSTEM_ID: &str = "theme_system";
+const MENU_THEME_LIGHT_ID: &str = "theme_light";
+const MENU_THEME_DARK_ID: &str = "theme_dark";
 
 /// 写入日志到 %APPDATA%/com.pincopy.desktop/pincopy.log（release 无控制台时便于排查）
 pub(crate) fn log_line(app: &AppHandle, message: &str) {
@@ -64,9 +70,11 @@ fn create_pin_window(app: &tauri::AppHandle, text: &str) -> Result<(), Box<dyn s
         .as_secs();
     let label = format!("pin_{timestamp}");
 
+    let theme_pref = load_theme_preference(app);
     let init_script = format!(
-        "window.__PINCOPY_CONTENT__ = {};",
-        serde_json::to_string(text)?
+        "window.__PINCOPY_CONTENT__ = {};\nwindow.__PINCOPY_THEME_PREFERENCE__ = {};",
+        serde_json::to_string(text)?,
+        serde_json::to_string(theme_pref.as_str())?
     );
 
     let (cursor_x, cursor_y) = get_cursor_physical_position();
@@ -167,10 +175,23 @@ fn ensure_single_instance() -> bool {
     true
 }
 
-/// 创建系统托盘：立即贴图、开机自启、退出
+/// 同步托盘「外观」子菜单的勾选状态
+fn sync_theme_menu_checks(
+    current: ThemePreference,
+    system: &CheckMenuItem<tauri::Wry>,
+    light: &CheckMenuItem<tauri::Wry>,
+    dark: &CheckMenuItem<tauri::Wry>,
+) {
+    let _ = system.set_checked(current == ThemePreference::System);
+    let _ = light.set_checked(current == ThemePreference::Light);
+    let _ = dark.set_checked(current == ThemePreference::Dark);
+}
+
+/// 创建系统托盘：立即贴图、开机自启、外观主题、退出
 #[cfg(desktop)]
 fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let theme_pref = load_theme_preference(app);
 
     let pin_item = MenuItem::with_id(app, MENU_PIN_ID, "立即贴图 (双击 Ctrl)", true, None::<&str>)?;
     let autostart_item = CheckMenuItem::with_id(
@@ -181,9 +202,51 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         autostart_enabled,
         None::<&str>,
     )?;
+
+    let theme_system_item = CheckMenuItem::with_id(
+        app,
+        MENU_THEME_SYSTEM_ID,
+        ThemePreference::System.menu_label(),
+        true,
+        theme_pref == ThemePreference::System,
+        None::<&str>,
+    )?;
+    let theme_light_item = CheckMenuItem::with_id(
+        app,
+        MENU_THEME_LIGHT_ID,
+        ThemePreference::Light.menu_label(),
+        true,
+        theme_pref == ThemePreference::Light,
+        None::<&str>,
+    )?;
+    let theme_dark_item = CheckMenuItem::with_id(
+        app,
+        MENU_THEME_DARK_ID,
+        ThemePreference::Dark.menu_label(),
+        true,
+        theme_pref == ThemePreference::Dark,
+        None::<&str>,
+    )?;
+    let theme_submenu = Submenu::with_id_and_items(
+        app,
+        "theme_submenu",
+        "外观",
+        true,
+        &[&theme_system_item, &theme_light_item, &theme_dark_item],
+    )?;
+
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, MENU_QUIT_ID, "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&pin_item, &autostart_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &pin_item,
+            &autostart_item,
+            &theme_submenu,
+            &separator,
+            &quit_item,
+        ],
+    )?;
 
     let icon = app
         .default_window_icon()
@@ -191,6 +254,9 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .expect("PinCopy: missing app icon in tauri.conf.json");
 
     let autostart_for_handler = autostart_item.clone();
+    let theme_system_for_handler = theme_system_item.clone();
+    let theme_light_for_handler = theme_light_item.clone();
+    let theme_dark_for_handler = theme_dark_item.clone();
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
@@ -223,6 +289,41 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                     Err(err) => log_line(app, &format!("failed to read autostart state: {err}")),
                 }
             }
+            MENU_THEME_SYSTEM_ID => {
+                if let Err(err) =
+                    theme::apply_theme_preference(app, ThemePreference::System)
+                {
+                    log_line(app, &format!("failed to set theme: {err}"));
+                }
+                sync_theme_menu_checks(
+                    ThemePreference::System,
+                    &theme_system_for_handler,
+                    &theme_light_for_handler,
+                    &theme_dark_for_handler,
+                );
+            }
+            MENU_THEME_LIGHT_ID => {
+                if let Err(err) = theme::apply_theme_preference(app, ThemePreference::Light) {
+                    log_line(app, &format!("failed to set theme: {err}"));
+                }
+                sync_theme_menu_checks(
+                    ThemePreference::Light,
+                    &theme_system_for_handler,
+                    &theme_light_for_handler,
+                    &theme_dark_for_handler,
+                );
+            }
+            MENU_THEME_DARK_ID => {
+                if let Err(err) = theme::apply_theme_preference(app, ThemePreference::Dark) {
+                    log_line(app, &format!("failed to set theme: {err}"));
+                }
+                sync_theme_menu_checks(
+                    ThemePreference::Dark,
+                    &theme_system_for_handler,
+                    &theme_light_for_handler,
+                    &theme_dark_for_handler,
+                );
+            }
             MENU_QUIT_ID => app.exit(0),
             _ => {}
         })
@@ -249,6 +350,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init());
 
     builder
+        .invoke_handler(tauri::generate_handler![theme::get_theme_preference])
         .setup(|app| {
             #[cfg(desktop)]
             {
