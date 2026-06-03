@@ -1,0 +1,48 @@
+# 在 macOS 上构建 PinCopy（.app + .dmg）
+# Windows 无法交叉编译 Tauri macOS 包，请通过 GitHub Actions 或本地 Mac 构建。
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Apple targets (Universal Binary)
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri (Universal: Apple Silicon + Intel)
+        run: npm run tauri build -- --target universal-apple-darwin
+
+      - name: Upload .dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: PinCopy-macos-universal-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: PinCopy-macos-universal-app
+          path: src-tauri/target/release/bundle/macos/*.app
+          if-no-files-found: error
