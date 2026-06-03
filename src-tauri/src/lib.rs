@@ -9,6 +9,7 @@ use mouse_position::mouse_position::Mouse;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
+    webview::Color,
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 use theme::{ThemePreference, load_theme_preference};
@@ -91,6 +92,7 @@ fn create_pin_window(app: &tauri::AppHandle, text: &str) -> Result<(), Box<dyn s
         .decorations(false)
         .always_on_top(true)
         .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
         .shadow(false)
         .skip_taskbar(true)
         .resizable(true)

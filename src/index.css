@@ -7,7 +7,8 @@
   --pin-surface-text: rgba(255, 255, 255, 0.96);
   --pin-border: rgba(15, 23, 42, 0.1);
   --pin-border-code: rgba(51, 65, 85, 0.18);
-  --pin-shadow: 0 12px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06);
+  --pin-shadow-filter: drop-shadow(0 12px 28px rgba(15, 23, 42, 0.12))
+    drop-shadow(0 2px 8px rgba(15, 23, 42, 0.06));
   --pin-toolbar-bg: linear-gradient(
     180deg,
     rgba(241, 245, 249, 0.95) 0%,
@@ -34,7 +35,8 @@
   --pin-surface-text: rgba(15, 23, 42, 0.92);
   --pin-border: rgba(148, 163, 184, 0.14);
   --pin-border-code: rgba(100, 116, 139, 0.28);
-  --pin-shadow: 0 16px 48px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --pin-shadow-filter: drop-shadow(0 16px 40px rgba(0, 0, 0, 0.38))
+    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.22));
   --pin-toolbar-bg: linear-gradient(
     180deg,
     rgba(30, 41, 59, 0.55) 0%,
@@ -67,6 +69,13 @@ body,
   overflow: hidden;
 }
 
+/* 贴图路由：WebView2 默认底色非透明时会在圆角外露出矩形尖角 */
+html.pin-window,
+html.pin-window body,
+html.pin-window #root {
+  background: transparent !important;
+}
+
 /* 后台守护窗口（非透明贴图） */
 .app-daemon {
   min-height: 100%;
@@ -94,26 +103,29 @@ body,
   opacity: 0.9;
 }
 
-/* 贴图窗口：Tauri 透明窗口下根节点保持透明 */
+/* 贴图窗口：圆角裁剪到窗口级，避免矩形透明区域在白底上显尖角 */
 .pin-window-root {
   background: transparent !important;
+  border-radius: var(--pin-radius);
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .pin-content {
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
-  contain: layout style paint;
 }
 
 .pin-card {
   transform: translateZ(0);
   border-radius: var(--pin-radius);
   border: 1px solid var(--pin-border);
-  box-shadow: var(--pin-shadow);
+  /* drop-shadow 沿圆角轮廓投影，不会像 box-shadow 在四角挤出方形灰块 */
+  filter: var(--pin-shadow-filter);
   transition:
     border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    filter 0.2s ease;
 }
 
 .pin-card--code {

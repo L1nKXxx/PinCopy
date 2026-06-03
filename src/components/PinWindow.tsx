@@ -130,6 +130,11 @@ export default function PinWindow() {
   }, [displayContent, detection]);
 
   useEffect(() => {
+    document.documentElement.classList.add("pin-window");
+    return () => document.documentElement.classList.remove("pin-window");
+  }, []);
+
+  useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
 
@@ -277,8 +282,7 @@ export default function PinWindow() {
   return (
     <div
       ref={rootRef}
-      className="pin-window-root h-full w-full overflow-hidden bg-transparent"
-      style={{ opacity }}
+      className="pin-window-root h-full w-full bg-transparent"
     >
       <div
         ref={contentRef}
@@ -286,6 +290,7 @@ export default function PinWindow() {
       >
         <div
           className={`pin-card flex h-full w-full flex-col overflow-hidden ${cardClassName}`}
+          style={{ opacity }}
         >
           <div className="pin-toolbar shrink-0">
             <div
